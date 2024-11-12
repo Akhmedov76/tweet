@@ -37,9 +37,10 @@ class RegisterSerializers(serializers.ModelSerializer):
             validate_password(password=password)
         except ValidationError as e:
             raise serializers.ValidationError(e)
+        return attrs
 
     def validate_email(self, email):
-        if not email.endswith('@gmail.com') or not email.count('@') != 1:
+        if not email.endswith('@gmail.com') or email.count('@') != 1:
             raise serializers.ValidationError("Invalid email address")
         return email
 
@@ -48,15 +49,20 @@ class VerificationSerializer(serializers.ModelSerializer):
     email = serializers.EmailField()
     code = serializers.CharField(max_length=4)
 
+    class Meta:
+        model = VerificationModel
+        fields = ('id', 'email', 'code')
+
     def validate(self, attrs):
         try:
-            user_code = VerificationModel.objects.get(email=attrs['email'], code=attrs['code'])
+            user_code = VerificationModel.objects.get(user__email=attrs['email'], code=attrs['code'])
         except VerificationModel.DoesNotExist:
             raise serializers.ValidationError("Invalid verification code")
 
         if timezone.now() > user_code.created_at + timezone.timedelta(minutes=5):
             user_code.delete()
             raise serializers.ValidationError("Verification code has expired")
+        attrs['user_code'] = user_code
         return attrs
 
 
@@ -67,10 +73,8 @@ class LoginSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = UserModel
-        fields = ('id', 'username', 'email', 'password', 'email_or_username')
-        extra_kwargs = {'password': {'write_only': True},
-                        'email_or_username': {'required': True}
-                        }
+        fields = ('email_or_username', 'password',)
+        # extra_kwargs = {'password': {'write_only': True}}
 
     def validate(self, attrs):
         email_or_username = attrs.get('email_or_username')
@@ -87,4 +91,5 @@ class LoginSerializer(serializers.ModelSerializer):
 
         if not authenticated_user:
             raise serializers.ValidationError(self.error_messages)
+
         return attrs
